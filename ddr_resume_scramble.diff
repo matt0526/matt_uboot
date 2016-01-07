@@ -1,0 +1,68 @@
+diff --git a/arch/arm/cpu/aml_meson/m8b/firmware/appf/platform/a9-eb/power.c b/arch/arm/cpu/aml_meson/m8b/firmware/appf/platform/a9-eb/power.c
+index cf283a5..9139b43 100755
+--- a/arch/arm/cpu/aml_meson/m8b/firmware/appf/platform/a9-eb/power.c
++++ b/arch/arm/cpu/aml_meson/m8b/firmware/appf/platform/a9-eb/power.c
+@@ -95,6 +95,8 @@ void pwr_delay(int n)
+ #define P_AO_RTC_ADDR3				0xc810074c
+ #define P_AO_RTC_ADDR4				0xc8100750
+ 
++#define DMC_SEC_KEY                 0xda00201c
++#define DMC_SEC_CTRL                0xda002018
+ 
+ #define RESET0_REGISTER                            0x1101
+ #define RESET1_REGISTER                            0x1102
+@@ -148,6 +150,7 @@ void run_arc_program()
+ 	unsigned address0;
+ 	unsigned* pbuffer;
+ 	unsigned* pbuffer1;
++	unsigned dmc_sec_ctrl_addr, dmc_sec_key_addr;
+ 	vaddr1 = 0xd9010000; //store ddr trainning original data
+ 	vaddr2 = 0xd9000000;
+ 
+@@ -190,6 +193,11 @@ void run_arc_program()
+ 		pbuffer1++;
+ 	}
+ 
++	dmc_sec_ctrl_addr = 0xd9010300;
++	dmc_sec_key_addr = 0xd9010304;
++	*(unsigned int *)dmc_sec_ctrl_addr = readl(DMC_SEC_CTRL);
++	*(unsigned int *)dmc_sec_key_addr = readl(DMC_SEC_KEY);
++
+ 	clean_dcache_v7_l1();
+ 
+ 	//**********************//
+diff --git a/arch/arm/cpu/aml_meson/m8b/firmware/kreboot.S b/arch/arm/cpu/aml_meson/m8b/firmware/kreboot.S
+index 8b83198..f3aa8ab 100755
+--- a/arch/arm/cpu/aml_meson/m8b/firmware/kreboot.S
++++ b/arch/arm/cpu/aml_meson/m8b/firmware/kreboot.S
+@@ -107,13 +107,25 @@ delay_loop:
+ 	ldr r1,=0xffff
+ 	str r1,[r0]
+ 
+-/*
+-wait_dmc_sec_ctrl: //while( readl(DMC_SEC_CTRL) & (1<<31)) {}
++//ddr scrable function
++	ldr r10,=0x10300
++	ldr r1,[r10,#4]   /*sram 0x10304 addr*/
++	ldr r9,=0xda00201c
++	str r1,[r9,#0]     /*DMC_SEC_KEY0*/
++
++	ldr r1,[r10,#0]   /*sram 0x10300 addr*/
++	ldr r10,=0x80000000
++	orr r1,r1,r10
++
++	ldr r0,=0xda002018
++	str r1,[r0] /*DMC_SEC_CTRL*/
++
++__wait_dmc_sec_ctrl: //while( readl(DMC_SEC_CTRL) & (1<<31)) {}
+ 	ldr r2, [r0]
+-	and r2, r2, r1
++	and r2, r2, r10
+ 	cmp r2, #0
+-	bne wait_dmc_sec_ctrl
+-*/
++	bne __wait_dmc_sec_ctrl
++
+ #endif
+        LDR  r0, =0xc8100004 /*AO_RTI_STATUS_REG1*/
+        mov  r1, #12
